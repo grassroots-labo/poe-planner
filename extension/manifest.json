@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "グラスルーツ PoE 選定メモ",
+  "version": "0.1.0",
+  "description": "PoE電力とAP有線速度を出典付きで確認するローカル選定補助。",
+  "minimum_chrome_version": "116",
+  "permissions": ["sidePanel"],
+  "action": { "default_title": "PoE 選定メモを開く" },
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'none'; img-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'" }
+}
