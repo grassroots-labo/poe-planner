@@ -7,6 +7,8 @@
   const finite = v => typeof v === "number" && Number.isFinite(v);
   const unknown = v => v === null || v === undefined || v === "";
   const fmt = n => Number(n.toFixed(3)).toString();
+  // Tolerate only floating-point arithmetic noise, not a design allowance.
+  const within = (need, limit) => need <= limit || need - limit <= 16 * Number.EPSILON * Math.max(1, Math.abs(need), Math.abs(limit));
   const result = (status, reason) => ({ status, reason });
   const merge = rs => rs.some(r => r.status === "fail") ? "fail" : rs.some(r => r.status === "check") ? "check" : "pass";
   function validate(x) {
@@ -66,7 +68,7 @@
       let perPort = result("check", basis);
       if (finite(s.perPort)) {
         if ((finite(r.pd) && r.pd > s.perPort) || (finite(r.pse) && r.pse > s.perPort)) perPort = result("fail", `既知の必要電力が1ポート上限 ${fmt(s.perPort)}W を超えます。`);
-        else if (required !== null) perPort = result(required <= s.perPort ? "pass" : "fail", `${basis} 判定用 ${fmt(required)}W / 上限 ${fmt(s.perPort)}W。`);
+        else if (required !== null) perPort = result(within(required, s.perPort) ? "pass" : "fail", `${basis} 判定用 ${fmt(required)}W / 上限 ${fmt(s.perPort)}W。`);
       }
       if (required === null) totalKnown = false; else sum += required * r.qty;
       let speed;
@@ -90,9 +92,9 @@
     const lower = x.rows.reduce((a, r) => a + Math.max(r.pd || 0, r.pse || 0) * r.qty, 0) + (x.otherPorts > 0 ? (x.otherPse || 0) : 0);
     let budget = result("check", `PSE側の割当量が未確認です。既知分 ${fmt(base)}W、PD等による下限 ${fmt(lower)}W。全台分の割当量を確定してください。`);
     if (!finite(s.budget)) budget = result("check", "スイッチ全体のPSE予算が不明です。");
-    else if (lower > s.budget) budget = result("fail", `既知の下限だけで ${fmt(lower)}W > 全体 ${fmt(s.budget)}W。少なくとも ${fmt(lower - s.budget)}W不足。`);
-    else if (totalKnown) budget = result(base <= s.budget ? "pass" : "fail", `PSE割当合計 ${fmt(base)}W / 全体 ${fmt(s.budget)}W。${base > s.budget ? `${fmt(base - s.budget)}W不足。` : `残り ${fmt(s.budget - base)}W。`} 任意の余裕率を含みません。`);
-    const margin = !totalKnown || !finite(s.budget) ? result("check", "基本のPSE割当量が不明のため余裕率を評価できません。") : result(withMargin <= s.budget ? "pass" : "fail", `任意の余裕率 ${fmt(x.margin)}%：${fmt(base)} × ${fmt(1 + x.margin / 100)} = ${fmt(withMargin)}W / ${fmt(s.budget)}W。規格要件とは別の設計条件です。`);
+    else if (!within(lower, s.budget)) budget = result("fail", `既知の下限だけで ${fmt(lower)}W > 全体 ${fmt(s.budget)}W。少なくとも ${fmt(lower - s.budget)}W不足。`);
+    else if (totalKnown) budget = result(within(base, s.budget) ? "pass" : "fail", `PSE割当合計 ${fmt(base)}W / 全体 ${fmt(s.budget)}W。${!within(base, s.budget) ? `${fmt(base - s.budget)}W不足。` : `残り ${fmt(Math.max(0, s.budget - base))}W。`} 任意の余裕率を含みません。`);
+    const margin = !totalKnown || !finite(s.budget) ? result("check", "基本のPSE割当量が不明のため余裕率を評価できません。") : result(within(withMargin, s.budget) ? "pass" : "fail", `任意の余裕率 ${fmt(x.margin)}%：${fmt(base)} × ${fmt(1 + x.margin / 100)} = ${fmt(withMargin)}W / ${fmt(s.budget)}W。規格要件とは別の設計条件です。`);
     const other = x.otherPorts === 0 ? result("pass", "他機器なしとして計算。使用中の機器があれば必ず入力してください。") : result(x.otherVerified && finite(x.otherPse) ? "pass" : "check", `他機器 ${x.otherPorts}ポート / PSE ${finite(x.otherPse) ? fmt(x.otherPse) + 'W' : '不明'}。${x.otherVerified ? '規格・1ポート・割当量の確認済み申告あり。' : '他機器の規格・1ポート・割当量は別途確認が必要。個別の機器行での入力も可能。'}`);
     return { errors: [], rows, ports, budget, margin, other, totalKnown, base, withMargin, lower,
       powerStatus: merge([...rows.flatMap(r => [r.standard, r.perPort]), ports, budget, other]),
