@@ -1,0 +1,28 @@
+"use strict";
+document.getElementById("app").addEventListener("load",()=>{
+  const w=document.getElementById("app").contentWindow, d=w.document, out=[];
+  const $=id=>d.getElementById(id);
+  const set=(el,v)=>{el.value=v;el.dispatchEvent(new w.Event("input",{bubbles:true}));el.dispatchEvent(new w.Event("change",{bubbles:true}));};
+  const test=(name,fn)=>{try{fn();out.push("PASS "+name);}catch(e){out.push("FAIL "+name+": "+e.message);}};
+  const ok=(condition,msg)=>{if(!condition)throw Error(msg);};
+  const result=()=>$("results").textContent;
+  test("initial Japanese UI and unknown allocation",()=>{ok(d.documentElement.lang==="ja","language");ok(result().includes("PSE側の割当量が未確認"),"unknown PSE");});
+  test("speed bottleneck visible",()=>ok(result().includes("共通速度の上限 1Gbps / AP上限 2.5Gbps"),"1G limit"));
+  test("automatic recalculation on allocation",()=>{set($("allocation"),"standard");ok(result().includes("PSE割当合計 30W"),"30W reserve");});
+  test("two APs exceed55W",()=>{set(d.querySelector('[data-key="qty"]'),"2");ok(result().includes("5W不足"),"60>55");});
+  test("candidate change recalculates",()=>{set($("switch"),"gs110tpp");ok(result().includes("残り 60W"),"120W candidate");});
+  test("margin separated",()=>{set(d.querySelector('[data-key="qty"]'),"4");set($("margin"),"10");ok(result().includes("132W"),"margin");ok(result().includes("残り 0W"),"base passes");});
+  test("accept1G speed",()=>{set($("target"),"1");ok(result().includes("希望 1Gbps 以上"),"1G accepted");});
+  test("invalid fraction suspends result",()=>{set(d.querySelector('[data-key="qty"]'),"1.5");ok(result().includes("判定を保留"),"invalid suspended");set(d.querySelector('[data-key="qty"]'),"1");});
+  test("blank quantity suspends result",()=>{set(d.querySelector('[data-key="qty"]'),"");ok(result().includes("判定を保留"),"blank suspended");set(d.querySelector('[data-key="qty"]'),"1");});
+  test("add mixed manual AP",()=>{$("add").click();const cards=$("devices").children;ok(cards.length===2,"add");set(cards[1].querySelector('[data-key="model"]'),"manual");set(cards[1].querySelector('[data-key="standard"]'),"bt3");ok(result().includes("対応集合に含まれません"),"bt mismatch");});
+  test("manual text rendered safely",()=>{const card=$("devices").children[1];set(card.querySelector('[data-key="name"]'),'<img src=x onerror="alert(1)">');ok(result().includes('<img src=x'),"literal text");ok(!$("results").querySelector("img"),"no HTML injection");});
+  test("remove row",()=>{$("devices").children[1].querySelector(".remove").click();ok($("devices").children.length===1,"remove");});
+  test("reserved uplink port count validated",()=>{set($("reserved"),"9");ok(result().includes("利用できないポート数がPoEポート数を超えています"),"reserved");set($("reserved"),"0");});
+  test("manual switch preserves unknown10G speed intersection",()=>{set($("switch"),"manual");ok(!$("manual-switch").hidden,"manual visible");set($("s-speeds"),"10");ok(result().includes("共通速度がありません"),"no invented 2.5G support");});
+  test("malformed speed input rejected",()=>{set($("s-speeds"),"1,wat");ok(result().includes("速度集合が不正"),"bad speeds");});
+  test("source links use noreferrer",()=>ok([...$("sources").querySelectorAll("a")].every(a=>a.rel.includes("noreferrer")&&a.href.startsWith("https://")),"safe source links"));
+  test("no horizontal overflow at400px",()=>ok(d.documentElement.scrollWidth<=d.documentElement.clientWidth,"overflow"));
+  const failed=out.filter(v=>v.startsWith("FAIL")).length;
+  document.getElementById("report").textContent=`${failed===0?"ALL_PASS":"FAILED"} ${out.length-failed}/${out.length}\n`+out.join("\n");
+});
