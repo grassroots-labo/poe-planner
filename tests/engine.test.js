@@ -19,6 +19,8 @@ test("low class cannot silently underreserve at AP", () => check(r => assert.ok(
 test("PD above chosen standard receiver limit invalid", () => check(r => assert.ok(r.errors.length),x => { x.rows[0].standard="af"; x.rows[0].pd=16; x.allocation="standard"; }));
 test("manual PSE without evidence stays unknown", () => check(r => assert.equal(r.budget.status,"check"),x => { x.allocation="pse"; x.rows[0].pse=20; }));
 test("manual verified PSE exactly55W passes", () => check(r => { assert.equal(r.budget.status,"pass"); assert.equal(r.base,55); },x => { x.allocation="pse"; x.rows[0].qty=2; x.rows[0].pse=27.5; x.rows[0].pseEvidence="maximum including startup verified in PSE setting"; }));
+test("50W with10percent margin fits55W despite floating point noise", () => check(r => assert.equal(r.margin.status,"pass"),x => { x.allocation="pse"; x.rows[0].qty=2; x.rows[0].pse=25; x.rows[0].pseEvidence="maximum confirmed"; x.margin=10; }));
+test("real margin shortage is not hidden by arithmetic tolerance", () => check(r => assert.equal(r.margin.status,"fail"),x => { x.allocation="pse"; x.rows[0].qty=2; x.rows[0].pse=25; x.rows[0].pseEvidence="maximum confirmed"; x.margin=10.001; }));
 test("manual PSE insufficient per port", () => check(r => assert.equal(r.rows[0].perPort.status,"fail"),x => { x.allocation="pse"; x.switch.perPort=25; x.rows[0].pse=27.5; x.rows[0].pseEvidence="source"; }));
 test("PSE less than PD invalid", () => check(r => assert.ok(r.errors.length),x => x.rows[0].pse=15));
 test("known PD lower bound can prove insufficient total", () => check(r => assert.equal(r.budget.status,"fail"),x => x.rows[0].qty=4));
