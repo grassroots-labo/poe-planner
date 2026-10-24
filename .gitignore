@@ -1,0 +1,6 @@
+dist/
+evidence/
+node_modules/
+*.log
+*.tmp
+__pycache__/
