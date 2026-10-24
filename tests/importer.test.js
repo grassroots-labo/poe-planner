@@ -1,0 +1,24 @@
+"use strict";
+const {test}=require('node:test');const assert=require('node:assert/strict');const I=require('../extension/importer');const F=require('./spec-fixtures');
+test('AP consumption remains PD; at needed despite16W',()=>{const r=I.extract(F.ap,'ap');assert.equal(r.pd,16);assert.equal(r.pse,null);assert.equal(r.standard,'at');assert.equal(r.poeClass,null);assert.deepEqual(r.speeds,[.1,1,2.5]);assert.ok(r.evidence.pd.includes('16W'));assert.equal(r.source.url,F.ap.url);});
+test('switch own consumption is not PoE budget; uplink not PoE speed',()=>{const r=I.extract(F.switch,'switch');assert.equal(r.budget,55);assert.equal(r.perPort,30);assert.equal(r.ports,8);assert.deepEqual(r.speeds,[.01,.1,1]);assert.ok(r.uplink.includes('10G'));assert.deepEqual(r.standards,['af','at']);assert.equal(r.powerMode,'ieee');});
+test('injector output distinguished from input and two physical ports',()=>{const r=I.extract(F.injector,'injector');assert.equal(r.perPort,30);assert.equal(r.ports,1);assert.equal(r.budget,null);assert.deepEqual(r.speeds,[.01,.1,1]);assert.deepEqual(r.standards,['af','at']);assert.equal(r.powerMode,'ieee');});
+test('generic consumption never fills switch power budget',()=>{const r=I.extract({...F.switch,lines:['最大消費電力 89W']},'switch');assert.equal(r.budget,null);assert.equal(r.perPort,null);});
+test('injector input wattage alone never fills output',()=>{const r=I.extract({...F.injector,lines:['Input: 60W','Output: 48V 0.5A']},'injector');assert.equal(r.perPort,null);});
+test('passive overrides other IEEE mentions in either line order',()=>{for(const lines of [['Passive PoE output 24W','IEEE802.3af/at'],['IEEE802.3af/at','Passive PoE output 24W']]){const r=I.extract({...F.injector,lines},'injector');assert.equal(r.powerMode,'passive');assert.deepEqual(r.standards,[]);}});
+test('non-passive statement does not identify passive mode',()=>{assert.notEqual(I.extract({...F.injector,lines:['Non-passive PoE','IEEE802.3af/at']},'injector').powerMode,'passive');});
+test('ambiguous multiple watt values stay unknown',()=>{const r=I.extract({...F.switch,lines:['PoE total power budget: 55W / 120W']},'switch');assert.equal(r.budget,null);});
+test('conflicting AP consumption values stay unknown with evidence',()=>{const r=I.extract({...F.ap,lines:['最大消費電力 16W','最大消費電力 25W']},'ap');assert.equal(r.pd,null);assert.match(r.evidence.pd,/競合/);});
+test('unknown class or PSE not derived from at or PD',()=>{const r=I.extract(F.ap,'ap');assert.equal(r.pse,null);assert.equal(r.poeClass,null);});
+test('explicit PSE required amount is separate candidate',()=>{const r=I.extract({...F.ap,lines:[...F.ap.lines,'PSE必要電力 25W']},'ap');assert.equal(r.pd,16);assert.equal(r.pse,25);assert.match(r.pseEvidence,/PSE/);});
+test('10G alone does not invent2.5G or5G',()=>assert.deepEqual(I.speedValues('PoE ports 10GBASE-T'),[10]));
+test('mixed uplink and PoE port line remains unknown speed',()=>{const r=I.extract({...F.switch,lines:['PoE ports 1GBASE-T, uplink 10GBASE-T']},'switch');assert.equal(r.speeds,null);});
+test('bt without Type remains unconfirmed',()=>assert.deepEqual(I.standards('IEEE802.3bt'),[]));
+test('negative standard statement not imported',()=>assert.deepEqual(I.standards('IEEE802.3at 非対応'),[]));
+test('at/af abbreviated list is preserved',()=>assert.deepEqual(I.standards('IEEE802.3at/af'),['af','at']));
+test('HTML text is data and never executable',()=>{const r=I.extract({...F.ap,title:'<img src=x onerror=alert(1)>',lines:['モデル名 : <script>global.bad=true</script>']},'ap');assert.ok(r.name.includes('<script>'));assert.equal(global.bad,undefined);});
+test('truncated input warns and unknowns remain null',()=>{const r=I.extract({...F.ap,lines:[],truncated:true},'ap');assert.equal(r.pd,null);assert.ok(r.warnings.some(s=>s.includes('制限')));});
+for(const [name,changes] of [['PDF',{contentType:'application/pdf'}],['image',{contentType:'image/png'}],['PDF suffix',{url:'https://example.invalid/a.pdf'}],['chrome page',{url:'chrome://settings/'}],['script URL',{url:'javascript:alert(1)'}],['credentials in URL',{url:'https://user:secret@example.invalid/spec'}]])test('unsupported '+name,()=>assert.throws(()=>I.extract({...F.ap,...changes},'ap')));
+test('source fragment removed; capture time retained',()=>{const r=I.extract({...F.ap,url:F.ap.url+'#hardware'},'ap');assert.equal(r.source.url,F.ap.url);assert.equal(r.source.capturedAt,F.ap.capturedAt);assert.equal(r.source.extractedFrom,F.ap.url);});
+
+test("injector max-dot notation preserves explicit output watts",()=>{const r=I.extract({url:"https://example.test/spec",contentType:"text/html",title:"test",lines:["Output:max.30W"]},"injector");assert.equal(r.perPort,30);});
