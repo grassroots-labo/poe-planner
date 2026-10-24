@@ -1,7 +1,11 @@
 {
-  "name": "grassroots-poe-planner",
-  "version": "0.1.0",
+  "name": "poe-planner",
+  "version": "0.2.0",
   "private": true,
   "description": "Local Chrome side panel for PoE and wired AP link planning",
-  "scripts": { "test": "node --test --test-isolation=none tests/engine.test.js tests/package.test.js", "serve": "node scripts/serve.js", "package": "python scripts/package.py" }
+  "scripts": {
+    "test": "node --test --test-isolation=none tests/engine.test.js tests/package.test.js tests/importer.test.js tests/masters.test.js",
+    "serve": "node scripts/serve.js",
+    "package": "python scripts/package.py"
+  }
 }
