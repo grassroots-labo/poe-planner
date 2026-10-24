@@ -1,3 +1,10 @@
 "use strict";
-// No tab access, injection, tracking, or network calls.
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+// The action grants activeTab for the selected page. Opening through the built-in
+// side-panel toggle does not grant it (Chromium issue 40904917).
+// Page contents are read only after the separate import button is pressed.
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
+chrome.action.onClicked.addListener(tab => {
+  if (Number.isInteger(tab.windowId)) {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(console.error);
+  }
+});

@@ -3,6 +3,8 @@
   const $ = id => document.getElementById(id);
   const data = globalThis.POE_DATA;
   const engine = globalThis.POE_ENGINE;
+  const aps = () => [...data.aps, ...(globalThis.POE_MASTERS?.getAps() || [])];
+  const pses = () => [...data.switches, ...(globalThis.POE_MASTERS?.getPses() || [])];
   const value = el => el.value.trim() === "" ? null : Number(el.value);
   const number = id => value($(id));
   const speedSet = text => text.trim() === "" ? null : text.split(",").map(s => s.trim() === "" ? NaN : Number(s));
@@ -14,17 +16,20 @@
   }
   function fillDevice(card) {
     const get = k => card.querySelector(`[data-key="${k}"]`);
-    const ap = data.aps.find(a => a.id === get("model").value);
+    const ap = aps().find(a => a.id === get("model").value);
     for (const key of ["name","pd","standard","speeds"]) {
       get(key).disabled = Boolean(ap);
+      get(key).closest("label").hidden = Boolean(ap);
       get(key).value = ap ? (Array.isArray(ap[key]) ? ap[key].join(",") : ap[key] ?? "") : "";
     }
-    for (const key of ["pse","poeClass","pseEvidence"]) get(key).value = "";
+    for (const key of ["pse","poeClass","pseEvidence"]) get(key).value = ap?.[key] ?? "";
+    card.querySelector(".ap-spec").textContent = ap ? `必要規格 ${ap.standard || '未確認'} · PD ${ap.pd ?? '未確認'}W · 有線 ${ap.speeds?.join(' / ') || '未確認'} Gbps。PSE予算は別に確認。` : "";
     card.querySelector(".device-note").textContent = ap ? ap.note : "手入力値はこの画面でのみ有効です。出典で規格・速度集合・機能制限を確認してください。空欄は不明として扱います。";
   }
   function addDevice() {
     if ($("devices").children.length >= 50) return;
     const card = $("device-template").content.firstElementChild.cloneNode(true);
+    fillModels(card.querySelector('[data-key="model"]'), aps(), "手入力のAP・機器");
     card.querySelector('[data-key="model"]').addEventListener("change", () => { fillDevice(card); render(); });
     card.querySelector(".remove").addEventListener("click", () => { card.remove(); render(); });
     $("devices").append(card); fillDevice(card); render();
@@ -32,10 +37,10 @@
   function read() {
     const rows = Array.from($("devices").children).map(card => {
       const get = key => card.querySelector(`[data-key="${key}"]`);
-      const ap = data.aps.find(a => a.id === get("model").value);
+      const ap = aps().find(a => a.id === get("model").value);
       return { ...(ap || {}), name: get("name").value.trim() || "手入力機器", qty: value(get("qty")), pd: value(get("pd")), standard: get("standard").value || null, speeds: speedSet(get("speeds").value), pse: value(get("pse")), poeClass: value(get("poeClass")), pseEvidence: get("pseEvidence").value };
     });
-    const sw = data.switches.find(s => s.id === $("switch").value);
+    const sw = pses().find(s => s.id === $("switch").value);
     const custom = !sw;
     $("manual-switch").hidden = !custom;
     const s = sw ? { ...sw } : { name: $("s-name").value.trim() || "手入力スイッチ", standards: $("s-standard").value ? $("s-standard").value.split(",") : [], budget: number("s-budget"), perPort: number("s-port"), ports: number("s-ports"), speeds: speedSet($("s-speeds").value), uplink: $("s-uplink").value.trim() || "未確認", sources: [], note: "手入力値。メーカー資料の電源条件・ポート別上限・適用設定を確認してください。" };
@@ -52,6 +57,7 @@
     const x = read(); const r = engine.evaluate(x); const errors = [...x.inputErrors, ...r.errors];
     const summary = $("switch-summary"); summary.replaceChildren();
     const sw = x.switch;
+    if (sw.source) savedSource(summary,sw);
     summary.append(element("strong", sw.name), element("p", `1ポート ${sw.perPort ?? '不明'}W · 全体 ${sw.budget ?? '不明'}W · 利用可能 ${sw.ports ?? '不明'} PoEポート`), element("p", `PoEポート確認速度：${sw.speeds?.length ? sw.speeds.join(' / ') + ' Gbps' : '未確認'}`), element("p", `上流アップリンク：${sw.uplink}`), element("p", sw.note));
     const out = $("results"); out.replaceChildren(); const heading = element("h2"); heading.append(element("b", "04"), document.createTextNode(" 判定・根拠")); out.append(heading);
     if (errors.length) {
@@ -63,13 +69,16 @@
     const total = element("div", undefined, "result-card"); total.append(element("h3","スイッチ全体"),line("PSE総予算",r.budget),line("PoEポート数",r.ports),line("他のPoE機器",r.other),line("任意の余裕率（別判定）",r.margin)); out.append(total);
     r.rows.forEach((row,i) => {
       const box = element("div", undefined, "result-card"); box.append(element("h3",`${i + 1}. ${row.name} × ${row.qty}台`),line("PoE規格",row.standard),line("1ポート給電",row.perPort),line("AP接続ポートの速度",row.speed),element("p", row.note, "note"));
-      if (x.rows[i].sources) { const d = element("details"); d.append(element("summary","この機器の根拠")); sources(d,x.rows[i].sources); box.append(d); }
+      if (x.rows[i].sources?.length) { const d = element("details"); d.append(element("summary","この機器の根拠")); sources(d,x.rows[i].sources); box.append(d); }
+      if (x.rows[i].source) savedSource(box,x.rows[i]);
       out.append(box);
     });
     out.append(element("p", "通信条件：要確認。ケーブル種別・距離・PoE対応、Ethernet規格、上流側の対応速度・集約帯域、設定は未検証です。表示は確認できた共通速度の上限で、実効速度や総合的な通信互換を保証しません。", "note"));
   }
-  for (const sw of data.switches) { const o = element("option",sw.name); o.value=sw.id; $("switch").append(o); }
-  const manual=element("option","手入力スイッチ"); manual.value="manual"; $("switch").append(manual);
+  function fillModels(select, records, manualLabel) { const previous=select.value; select.replaceChildren(); for(const record of records){const o=element("option",`${record.saved ? '保存：' : ''}${record.kind==='injector'?'[インジェクタ] ':''}${record.name}`);o.value=record.id;select.append(o);}const manual=element("option",manualLabel);manual.value="manual";select.append(manual);if([...select.options].some(o=>o.value===previous))select.value=previous;else if(previous?.startsWith("master-"))select.value="manual"; }
+  function savedSource(container,record){const p=element("p",`保存データ・取得 ${record.source.capturedAt}。`,"hint");if(record.source.url){const a=element("a","出典を開く");a.href=record.source.url;a.target="_blank";a.rel="noopener noreferrer";p.append(a);}else p.append(document.createTextNode("出典未登録（手入力）。"));container.append(p);}
+  fillModels($("switch"),pses(),"手入力の給電機器");
+  document.addEventListener("poe-masters-changed",()=>{fillModels($("switch"),pses(),"手入力の給電機器");for(const card of $("devices").children){const select=card.querySelector('[data-key="model"]');const id=select.value;fillModels(select,aps(),"手入力のAP・機器");if(id.startsWith("master-"))fillDevice(card);}render();});
   sources($("sources"), Object.keys(data.sources));
   $("sources").append(element("p","内蔵データ：AP 1機種、スイッチ2機種。引用資料の対象版・地域・電源条件を使用前に確認してください。型番の末尾やハードウェア版が違う機種に流用しないでください。"));
   $("add").addEventListener("click",addDevice);

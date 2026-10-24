@@ -57,7 +57,7 @@
     const s = x.switch;
     let sum = 0, totalKnown = true;
     const rows = x.rows.map(r => {
-      const standard = !r.standard || !s.standards.length ? result("check", "APまたはスイッチの対応規格が不明です。") : s.standards.includes(r.standard) ? result("pass", `${r.name}の必要規格 ${r.standard} をスイッチの対応集合で確認。`) : result("fail", `${r.name}は ${r.standard} が必要。スイッチの対応集合に含まれません。消費電力が小さくても代替できません。`);
+      const standard = ["switch","injector"].includes(s.kind) && s.powerMode !== "ieee" ? result("check",`${s.powerMode === "passive" ? "パッシブPoE" : "給電方式未確認"}の給電機器です。IEEE PoEの互換を確定できません。`) : !r.standard || !s.standards.length ? result("check", "APまたは給電機器の対応規格が不明です。") : s.standards.includes(r.standard) ? result("pass", `${r.name}の必要規格 ${r.standard} を給電機器の対応集合で確認。`) : result("fail", `${r.name}は ${r.standard} が必要。給電機器の対応集合に含まれません。消費電力が小さくても代替できません。`);
       let reserve = null, basis = "PSE側の割当量が未確認。PD消費電力を代入しません。";
       if (x.allocation === "standard" && caps[r.standard]) { reserve = caps[r.standard]; basis = `確認した規格上限予約：${r.standard} のPSE上限 ${fmt(reserve)}W/台（実消費量ではありません）。`; }
       if (x.allocation === "class" && !unknown(r.poeClass)) { reserve = classPower[r.poeClass]; basis = `確認したClass ${r.poeClass} 予約：PSE ${fmt(reserve)}W/台。`; }

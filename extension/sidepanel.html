@@ -3,13 +3,41 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>グラスルーツ PoE 選定メモ</title>
+  <title>PoE Planner</title>
   <link rel="stylesheet" href="style.css">
-  <script defer src="data.js"></script><script defer src="engine.js"></script><script defer src="app.js"></script>
+  <script defer src="data.js"></script><script defer src="engine.js"></script><script defer src="importer.js"></script><script defer src="masters.js"></script><script defer src="masters-ui.js"></script><script defer src="app.js"></script>
 </head>
 <body>
-  <header><div class="brand">GRASSROOTS <span>LOCAL TOOL / 01</span></div><h1>PoE 選定メモ</h1><p>給電と有線速度を、根拠から確かめる。</p><div class="privacy">ローカル計算 · APIキー不要 · 入力の外部送信なし</div></header>
+  <header><h1>PoE Planner</h1><p>APと給電機器の、電力・有線速度を確認</p><div class="privacy">ローカル計算・保存 ／ APIキー不要</div></header>
   <main>
+    <section aria-labelledby="masters-title"><h2 id="masters-title">仕様ページからマスター登録</h2>
+      <p class="hint">対象ページで拡張のツールバーボタンを押してから取り込みます。読み取りはこの操作時だけ。候補を確認・修正して保存します。</p>
+      <label>取り込む機器の種類<select id="import-kind"><option value="ap">AP・受電機器</option><option value="switch">PoEスイッチ</option><option value="injector">PoEインジェクタ</option></select></label>
+      <div class="master-actions"><button id="import-page" type="button">このタブの仕様を取り込む</button><button id="master-manual" type="button">手入力で登録</button></div>
+      <p id="master-status" class="hint" role="status" aria-live="polite"></p>
+      <form id="master-form" hidden class="device"><h3 id="master-form-title">取込候補の確認</h3><p class="note">抽出値は確定値ではありません。空欄は未確認です。PD消費電力、PSE必要量、スイッチ自身の消費電力、PoE給電予算を区別してください。</p>
+        <div class="grid"><label class="wide">モデル名<input id="m-name" maxlength="100" required></label>
+          <label class="wide">出典URL<input id="m-url" type="url" maxlength="2000" placeholder="https://...（手入力で不明なら空欄）"></label>
+          <label class="wide">取得日時<input id="m-date" readonly></label>
+          <label data-for="ap">必要PoE規格<select id="m-standard"><option value="">未確認</option><option value="af">802.3af</option><option value="at">802.3at</option><option value="bt3">802.3bt Type3</option><option value="bt4">802.3bt Type4</option></select></label>
+          <label data-for="ap">PD最大消費電力 (W)<input id="m-pd" type="number" min="0" step="any" placeholder="未確認"></label>
+          <label data-for="ap">PSE側の最大必要量 (W/台)<input id="m-pse" type="number" min="0" step="any" placeholder="PD値を転記しない"></label>
+          <label data-for="ap">PoEクラス<select id="m-class"><option value="">未確認</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+          <label class="wide" data-for="ap">PSE必要量の根拠<input id="m-pse-evidence" maxlength="1000" placeholder="PSE側の起動時・最大負荷を含む条件"></label>
+          <label data-for="pse">給電方式<select id="m-mode"><option value="unknown">未確認</option><option value="ieee">IEEE 802.3準拠のPoE</option><option value="passive">パッシブPoE</option></select></label>
+          <fieldset class="standards-field" data-for="pse"><legend>明記された給電対応規格</legend><label><input type="checkbox" name="m-standards" value="af">af</label><label><input type="checkbox" name="m-standards" value="at">at</label><label><input type="checkbox" name="m-standards" value="bt3">bt Type3</label><label><input type="checkbox" name="m-standards" value="bt4">bt Type4</label></fieldset>
+          <label data-for="pse">1出力ポートPSE上限 (W)<input id="m-per-port" type="number" min="0" step="any" placeholder="機器自身の消費電力と区別"></label>
+          <label data-for="pse">全出力合計PSE予算 (W)<input id="m-budget" type="number" min="0" step="any" placeholder="未確認"></label>
+          <label data-for="pse">給電出力ポート数<input id="m-ports" type="number" min="1" step="1" placeholder="LAN入力を数えない"></label>
+          <label class="wide">AP接続・給電出力側の明記された速度 (Gbps)<input id="m-speeds" placeholder="例：0.1,1,2.5 ／ 10Gから2.5/5Gを推測しない"></label>
+          <label class="wide" data-for="pse">上流・データ入力側の仕様メモ<input id="m-uplink" maxlength="300" placeholder="給電出力側の速度と区別"></label>
+          <label class="wide">機能制限・条件メモ<textarea id="m-note" rows="3" maxlength="1000"></textarea></label>
+        </div><details open><summary>抽出根拠・未確認の項目</summary><div id="master-evidence"></div></details>
+        <div id="master-duplicates" hidden class="note"></div><div id="master-error" hidden class="error" role="alert"></div>
+        <div class="master-actions"><button id="master-save" type="submit">確認してローカル保存</button><button id="master-cancel" type="button">キャンセル</button></div>
+      </form>
+      <details id="saved-masters"><summary>保存済みマスター（<span id="master-count">0</span>機種）</summary><p class="hint">確認したデータを計算に再利用します。価格・在庫・終売の監視は行いません。出典を開き、必要なときに再取り込み・更新してください。</p><div id="master-list"></div></details>
+    </section>
     <section aria-labelledby="devices-title"><div class="section-title"><h2 id="devices-title"><b>01</b> 接続する機器</h2><button id="add" type="button">＋ 機器を追加</button></div><p class="hint">APの混在に対応。カメラ等も手入力で追加できます。</p><div id="devices"></div></section>
     <section aria-labelledby="switch-title"><h2 id="switch-title"><b>02</b> 候補スイッチ</h2><label>モデル<select id="switch"></select></label><div id="switch-summary" class="spec-box"></div>
       <div id="manual-switch" hidden class="grid">
@@ -32,11 +60,11 @@
     </div><p class="hint">他機器は機器行と二重計上しないでください。余裕率は電力の規格要件を変更しません。</p></section>
     <section id="results" aria-labelledby="result-title" aria-live="polite" aria-atomic="true"></section>
     <section><h2><b>05</b> データと使い方</h2><details><summary>公式資料・確認日</summary><div id="sources"></div></details><details><summary>判定の読み方・制約</summary><p>「満たす」は入力された条件の比較結果です。PoEの条件と希望速度は別々に判定します。余裕率は任意の設計条件で、基本の給電判定には含めません。</p><p>PDは受電側の消費電力、PSEは給電側の予算です。ケーブル損失と予約方式により同じ数値ではありません。不明なPSE量をPD×台数で代用しません。</p><p>通信規格・ケーブル・距離・ファームウェア・設定・機能制限・上流の集約帯域は別途確認が必要です。リンク上限は実効速度を保証せず、総合的な通信互換保証ではありません。</p><p>入力はこの画面内だけで使用し、画面を閉じると失われます。出典リンクを押したときだけブラウザで外部ページを開きます。自動取得や分析タグはありません。</p></details></section>
-  </main><footer>グラスルーツ向け試作 v0.1.0 · MIT License<br>© 2026 株式会社グラスルーツ<br>メーカーの認定・相互接続試験を示すものではありません。</footer>
+  </main><footer>PoE Planner v0.2.0 · MIT License<br>配布元：<a href="https://github.com/grassroots-labo/poe-planner" target="_blank" rel="noopener noreferrer">株式会社グラスルーツ</a><br>© 2026 株式会社グラスルーツ<br>メーカーの認定・相互接続試験を示すものではありません。</footer>
   <template id="device-template"><fieldset class="device"><legend>機器</legend><div class="row-head"><label>モデル<select data-key="model"><option value="wlx322">Yamaha WLX322</option><option value="manual">手入力のAP・機器</option></select></label><button class="remove" type="button">削除</button></div><div class="grid">
     <label>台数<input data-key="qty" type="number" min="1" step="1" value="1"></label><label>名称<input data-key="name" maxlength="100"></label>
     <label>必要PoE規格<select data-key="standard"><option value="">不明</option><option value="af">802.3af</option><option value="at">802.3at</option><option value="bt3">802.3bt Type3</option><option value="bt4">802.3bt Type4</option></select></label>
     <label>PD最大消費電力 (W)<input data-key="pd" type="number" min="0" step="any" placeholder="不明なら空欄"></label>
     <label class="wide">AP・機器ポートの対応速度 (Gbps)<input data-key="speeds" placeholder="例：0.1,1,2.5 ／ 不明なら空欄"></label>
-  </div><p class="device-note hint"></p><details><summary>確認できたPSE必要量・PoEクラスを補足</summary><div class="grid"><label>PoEクラス<select data-key="poeClass"><option value="">不明</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label><label>PSE必要量 (W/台)<input data-key="pse" type="number" min="0" step="any" placeholder="PD値を転記しない"></label><label class="wide">PSE確認の根拠メモ<input data-key="pseEvidence" maxlength="500" placeholder="資料の箇所 / 設定 / 起動時・最大負荷を含む条件"></label></div></details></fieldset></template>
+  </div><p class="ap-spec hint"></p><details><summary>仕様・機能制限のメモ</summary><p class="device-note hint"></p></details><details><summary>確認できたPSE必要量・PoEクラスを補足</summary><div class="grid"><label>PoEクラス<select data-key="poeClass"><option value="">不明</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label><label>PSE必要量 (W/台)<input data-key="pse" type="number" min="0" step="any" placeholder="PD値を転記しない"></label><label class="wide">PSE確認の根拠メモ<input data-key="pseEvidence" maxlength="500" placeholder="資料の箇所 / 設定 / 起動時・最大負荷を含む条件"></label></div></details></fieldset></template>
 </body></html>
